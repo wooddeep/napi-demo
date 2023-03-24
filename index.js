@@ -246,7 +246,9 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { readFileAsync, sum } = nativeBinding
+const { readFileAsync, sum, show, start } = nativeBinding
 
 module.exports.readFileAsync = readFileAsync
 module.exports.sum = sum
+module.exports.show = show
+module.exports.start = start
