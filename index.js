@@ -246,9 +246,10 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { readFileAsync, sum, show, start } = nativeBinding
+const { readFileAsync, sum, show, start, startClient } = nativeBinding
 
 module.exports.readFileAsync = readFileAsync
 module.exports.sum = sum
 module.exports.show = show
 module.exports.start = start
+module.exports.startClient = startClient

@@ -12,3 +12,4 @@ export function readFileAsync(path: string): Promise<Buffer>
 export function sum(a: number, b: number): number
 export function show(): number
 export function start(): void
+export function startClient(): void
