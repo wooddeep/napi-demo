@@ -13,11 +13,11 @@ __metadata:
   linkType: hard
 
 "@napi-rs/cli@npm:^2.14.8":
-  version: 2.14.8
-  resolution: "@napi-rs/cli@npm:2.14.8"
+  version: 2.15.2
+  resolution: "@napi-rs/cli@npm:2.15.2"
   bin:
     napi: scripts/index.js
-  checksum: 59ccab188d0e40a0591d7402624fa882928a967ffc6b9a6dbfc00acbb828ca292cab85a8e965492367f6ca0d0fab600831a7f4b7f0495c47830e3c6895fc4a07
+  checksum: dedcbd339f634e4a4c442febbfaee7c0fd907f3b8082c1f3ddba18b0e02ae2f0e4bff75688763669db5fb1a0f5ab26a7200cb6c01fe8825effd0a70a44bcbbc7
   languageName: node
   linkType: hard
 
@@ -1048,6 +1048,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"fs-monkey@npm:^1.0.3":
+  version: 1.0.3
+  resolution: "fs-monkey@npm:1.0.3"
+  checksum: cf50804833f9b88a476911ae911fe50f61a98d986df52f890bd97e7262796d023698cb2309fa9b74fdd8974f04315b648748a0a8ee059e7d5257b293bfc409c0
+  languageName: node
+  linkType: hard
+
 "fs.realpath@npm:^1.0.0":
   version: 1.0.0
   resolution: "fs.realpath@npm:1.0.0"
@@ -1890,6 +1897,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"memfs@npm:^3.4.13":
+  version: 3.4.13
+  resolution: "memfs@npm:3.4.13"
+  dependencies:
+    fs-monkey: ^1.0.3
+  checksum: 3f9717d6f060919d53f211acb6096a0ea2f566a8cbcc4ef7e1f2561e31e33dc456053fdf951c90a49c8ec55402de7f01b006b81683ab7bd4bdbbd8c9b9cdae5f
+  languageName: node
+  linkType: hard
+
 "merge2@npm:^1.3.0, merge2@npm:^1.4.1":
   version: 1.4.1
   resolution: "merge2@npm:1.4.1"
@@ -2080,6 +2096,7 @@ __metadata:
     koa-router: ^10.1.1
     koa-static: ^5.0.0
     koa-views: ^8.0.0
+    memfs: ^3.4.13
   languageName: unknown
   linkType: soft
 
