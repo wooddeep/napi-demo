@@ -1,51 +1,23 @@
 const cluster = require("cluster")
-const os = require("os")
-
+const Router = require('koa-router')
 const Koa = require('koa')
 const app = new Koa()
-
 const backend = require("../index.js")
-
 const {initProcInfo, runServer, testShmWrite, testShmRead, printThreadId, testShmWriteThread} = require("../index");
+const {Buffer} = require("memfs/lib/internal/buffer");
 
-
-// export function readFileAsync(path: string): Promise<Buffer>
-
-async function asyncRead() {
-    var buff = await test.readFileAsync("E:\\syncher.nomad")
-    console.log(String(buff))
-}
-
-//asyncRead()
-
-const Router = require('koa-router')
-
-let home = new Router()
-
-// 子路由1
-home.get('/', async (ctx) => {
-    let html =
-        `
-    <ul>
-      <li><a href="/page/helloworld">/page/helloworld</a></li>
-      <li><a href="/page/404">/page/404</a></li>
-    </ul>
-  `
-    ctx.body = html
-})
-
-// 子路由2
 let page = new Router()
-page.get('/404', async (ctx) => {
+page.get('404', async (ctx) => {
     ctx.body = '404 page!'
-}).get('/helloworld', async (ctx) => {
-    ctx.body = 'helloworld page!'
+}).get('hello', async (ctx) => {
+    ctx.body = 'hello world page!'
+}).get('write', async (ctx) => {
+    backend.sendData(Buffer.from("hello world!"))
+    ctx.body = 'write page!'
 })
 
-// 装载所有子路由
 let router = new Router()
-router.use('/', home.routes(), home.allowedMethods())
-router.use('/page', page.routes(), page.allowedMethods())
+router.use('/', page.routes(), page.allowedMethods())
 
 // 加载路由中间件
 app.use(router.routes()).use(router.allowedMethods())
@@ -84,6 +56,7 @@ if (cluster.isMaster) { // main process
     })
 
 } else {
+
     //backend.testShmReadThread()
     backend.workerInit()
 

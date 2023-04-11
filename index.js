@@ -252,7 +252,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { sum, show, initProcTable, initProcInfo, masterInit, workerInit, processExit, testShmReadThread, callThreadsafeFunction, init } = nativeBinding
+const { sum, show, initProcTable, initProcInfo, masterInit, workerInit, processExit, sendData, callThreadsafeFunction, init } = nativeBinding
 
 module.exports.sum = sum
 module.exports.show = show
@@ -261,6 +261,6 @@ module.exports.initProcInfo = initProcInfo
 module.exports.masterInit = masterInit
 module.exports.workerInit = workerInit
 module.exports.processExit = processExit
-module.exports.testShmReadThread = testShmReadThread
+module.exports.sendData = sendData
 module.exports.callThreadsafeFunction = callThreadsafeFunction
 module.exports.init = init

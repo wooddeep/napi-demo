@@ -22,6 +22,13 @@ use winapi::shared::minwindef::{DWORD, LPVOID};
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
 
+use napi::{JsFunction, Result};
+use std::{time};
+use napi::{
+    bindgen_prelude::*,
+    threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode},
+};
+
 #[macro_use]
 extern crate napi_derive;
 
@@ -218,8 +225,7 @@ fn shm_read_demo(map: LPVOID) {
     }
 }
 
-fn do_shm_write(map: LPVOID, buffer :&[u8]) {
-
+fn do_shm_write(map: LPVOID, buffer: &[u8]) {
     let data_ptr = buffer.as_ptr() as LPVOID;
     if map.is_null() {
         panic!("MapViewOfFile failed");
@@ -243,7 +249,6 @@ fn do_shm_read(map: LPVOID) {
     };
 
     println!("Read from shared memory: {}", buffer);
-
 }
 
 
@@ -280,7 +285,7 @@ fn shm_init() -> (LPVOID, HANDLE) {
         panic!("MapViewOfFile failed");
     }
 
-    return (map, handle)
+    return (map, handle);
 }
 
 #[cfg(target_os = "windows")]
@@ -293,17 +298,11 @@ pub fn master_init() {
         let buffer = b"Hello, Rust";
         do_shm_write(MAP_DESC.0, buffer);
     }
-
-    // thread::spawn(|| {
-    //     println!("I am master's main thread!");
-    //
-    // });
 }
 
 #[napi]
 pub fn worker_init() {
     thread::spawn(|| {
-
         unsafe {
             MAP_DESC = shm_init();
             do_shm_read(MAP_DESC.0);
@@ -320,56 +319,16 @@ pub fn process_exit() {
 }
 
 #[napi]
-fn test_shm_read_thread() {
-    let mapping_name = "RustMapping";
-    let mapping_size = 1024;
-
-    let handle = unsafe {
-        OpenFileMappingW(
-            FILE_MAP_ALL_ACCESS,
-            false.into(),
-            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
-        )
-    };
-
-    if handle.is_null() {
-        panic!("OpenFileMappingW failed");
-    }
-
-    let map = unsafe {
-        MapViewOfFile(
-            handle,
-            FILE_MAP_ALL_ACCESS,
-            0,
-            0,
-            mapping_size as usize,
-        )
-    };
-
-    if map.is_null() {
-        panic!("MapViewOfFile failed");
-    }
+pub fn send_data(data: Buffer) {
 
     let buffer = unsafe {
-        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
+        let slice = std::slice::from_raw_parts(data.as_ptr() as *const u8, 5);
         std::str::from_utf8_unchecked(slice)
     };
 
-    println!("Read from shared memory: {}", buffer);
-
-    unsafe {
-        UnmapViewOfFile(map);
-        CloseHandle(handle);
-    }
+    println!("data: {}", buffer);
 }
 
-
-use napi::{JsFunction, Result};
-use std::{time};
-use napi::{
-    bindgen_prelude::*,
-    threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode},
-};
 
 #[napi]
 pub fn call_threadsafe_function(callback: JsFunction) -> Result<()> {
@@ -393,7 +352,7 @@ pub fn call_threadsafe_function(callback: JsFunction) -> Result<()> {
 
 use napi::{Env};
 
-fn clearup(env :Env) {
+fn clearup(env: Env) {
     println!("#shut down!!")
 }
 

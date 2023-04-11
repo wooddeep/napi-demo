@@ -10,6 +10,6 @@ export function initProcInfo(brothers: number, index: number): void
 export function masterInit(): void
 export function workerInit(): void
 export function processExit(): void
-export function testShmReadThread(): void
+export function sendData(data: Buffer): void
 export function callThreadsafeFunction(callback: (...args: any[]) => any): void
 export function init(): void
