@@ -4,7 +4,8 @@ const os = require("os")
 const Koa = require('koa')
 const app = new Koa()
 
-const test = require("../index.js")
+const backend = require("../index.js")
+
 const {initProcInfo, runServer, testShmWrite, testShmRead, printThreadId, testShmWriteThread} = require("../index");
 
 
@@ -51,11 +52,22 @@ app.use(router.routes()).use(router.allowedMethods())
 
 const child_proc_num = 1 // /*os.cpus().length*/
 
+process.on("SIGINT", () => {
+    backend.processExit()
+    process.exit()
+});
+
+process.on("beforeExit", (code) => {
+    console.log("## pre exit in node...")
+    backend.processExit()
+})
 
 if (cluster.isMaster) { // main process
-    console.log(`## parent process id: ${test.show()}\n`)
+    //backend.init()
 
-    test.testShmWriteThread()
+    backend.masterInit()
+
+    //backend.testShmWriteThread()
 
     // test.callThreadsafeFunction(async () => {
     //     console.log(`## called by rust...... time: ${new Date()}`)
@@ -72,8 +84,9 @@ if (cluster.isMaster) { // main process
     })
 
 } else {
+    //backend.testShmReadThread()
+    backend.workerInit()
 
-    test.testShmReadThread()
     console.log("WORKER_INDEX", process.env["WORKER_INDEX"])
     app.listen(5050, async () => {
         //console.log("# child start ok!")

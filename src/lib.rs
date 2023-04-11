@@ -1,17 +1,7 @@
 use futures::prelude::*;
 use napi::bindgen_prelude::*;
 use std::process;
-use tokio::fs;
-//use napi::tokio::{self, fs};
-//#![deny(clippy::all)]
 
-use futures::StreamExt as _;
-use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
-
-use parity_tokio_ipc::{Endpoint, SecurityAttributes};
-
-use shared_memory::*;
-use shared_memory::ShmemConf;
 use std::sync::mpsc::channel;
 use std::thread;
 use serde::{Deserialize, Serialize};
@@ -124,144 +114,64 @@ struct ProcTable {
 
 #[napi]
 pub fn init_proc_table(n: u32) {
-    let shmem_flink = Path::new("basic_mapping");
-    let mut proc_table = ProcTable { proc_num: n, proc_list: vec![] };
-    for i in 0..n - 1 {
-        let proc_info = ProcInfo { process_id: 100, occupied: true };
-        proc_table.proc_list.push(proc_info)
-    }
 
-    let bytes = bincode::serialize(&proc_table).unwrap();
-    println!("{:?}", bytes);
-
-    let shmem = match ShmemConf::new().size(bytes.len()).flink(shmem_flink).create() {
-        Ok(m) => m,
-        Err(ShmemError::LinkExists) => ShmemConf::new().flink(shmem_flink).open().unwrap(),
-        Err(e) => {
-            eprintln!("Unable to create or open shmem flink  : {e}");
-            return;
-        }
-    };
-
-    // Get pointer to the shared memory
-    let mut raw_ptr = shmem.as_ptr();
-
-    // WARNING: This is prone to race conditions as no sync/locking is used
-    unsafe {
-        for i in 0..bytes.len() {
-            *(raw_ptr.offset(i as isize)) = bytes[i];
-        }
-    }
+    // let shmem_flink = Path::new("basic_mapping");
+    // let mut proc_table = ProcTable { proc_num: n, proc_list: vec![] };
+    // for i in 0..n - 1 {
+    //     let proc_info = ProcInfo { process_id: 100, occupied: true };
+    //     proc_table.proc_list.push(proc_info)
+    // }
+    //
+    // let bytes = bincode::serialize(&proc_table).unwrap();
+    // println!("{:?}", bytes);
+    //
+    // // Get pointer to the shared memory
+    // let mut raw_ptr = shmem.as_ptr();
+    //
+    // // WARNING: This is prone to race conditions as no sync/locking is used
+    // unsafe {
+    //     for i in 0..bytes.len() {
+    //         *(raw_ptr.offset(i as isize)) = bytes[i];
+    //     }
+    // }
 
     println!("share memory create done!");
 }
 
 #[napi]
 pub fn init_proc_info(brothers: u32, index: u32) {
-    let shmem_flink = Path::new("basic_mapping");
-
-    let mut proc_table = ProcTable { proc_num: brothers, proc_list: vec![] };
-    for i in 0..brothers - 1 {
-        let proc_info = ProcInfo { process_id: 100, occupied: true };
-        proc_table.proc_list.push(proc_info)
-    }
-
-    let mut bytes = bincode::serialize(&proc_table).unwrap();
-    println!("0: {:?}", bytes);
-
-    let shmem = match ShmemConf::new().size(bytes.len()).flink(shmem_flink).create() {
-        Ok(m) => {
-            println!("create!");
-            m
-        }
-        Err(ShmemError::LinkExists) => {
-            println!("existed!");
-            ShmemConf::new().flink(shmem_flink).open().unwrap()
-        }
-        Err(e) => {
-            eprintln!("Unable to create or open shmem flink  : {e}");
-            return;
-        }
-    };
-
-    // Get pointer to the shared memory
-    let mut raw_ptr = shmem.as_ptr();
-
-    unsafe {
-        for i in 0..bytes.len() {
-            bytes[i] = *(raw_ptr.offset(i as isize));
-        }
-    }
-    println!("1: {:?}", bytes);
-
-    let proc_table: ProcTable = bincode::deserialize(&*bytes).unwrap();
-    println!("## process number: {}", proc_table.proc_num);
-    for i in 0..proc_table.proc_num {
-        let proc_info = proc_table.proc_list.get(i as usize).unwrap();
-        println!("## process id: {}, occupied: {}", proc_info.process_id, proc_info.process_id);
-    }
+    // let shmem_flink = Path::new("basic_mapping");
+    //
+    // let mut proc_table = ProcTable { proc_num: brothers, proc_list: vec![] };
+    // for i in 0..brothers - 1 {
+    //     let proc_info = ProcInfo { process_id: 100, occupied: true };
+    //     proc_table.proc_list.push(proc_info)
+    // }
+    //
+    // let mut bytes = bincode::serialize(&proc_table).unwrap();
+    // println!("0: {:?}", bytes);
+    //
+    // let shmem =
+    //
+    // // Get pointer to the shared memory
+    // let mut raw_ptr = shmem.as_ptr();
+    //
+    // unsafe {
+    //     for i in 0..bytes.len() {
+    //         bytes[i] = *(raw_ptr.offset(i as isize));
+    //     }
+    // }
+    // println!("1: {:?}", bytes);
+    //
+    // let proc_table: ProcTable = bincode::deserialize(&*bytes).unwrap();
+    // println!("## process number: {}", proc_table.proc_num);
+    // for i in 0..proc_table.proc_num {
+    //     let proc_info = proc_table.proc_list.get(i as usize).unwrap();
+    //     println!("## process id: {}, occupied: {}", proc_info.process_id, proc_info.process_id);
+    // }
 }
 
-
-fn do_shm_write() {
-    let mapping_name = "RustMapping";
-    let mapping_size = 1024;
-
-    let handle = unsafe {
-        CreateFileMappingW(
-            INVALID_HANDLE_VALUE,
-            ptr::null_mut(),
-            PAGE_READWRITE,
-            0,
-            mapping_size,
-            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
-        )
-    };
-
-    if handle.is_null() {
-        panic!("CreateFileMappingW failed");
-    }
-
-    let buffer = b"Hello, Rust";
-    let data_ptr = buffer.as_ptr() as LPVOID;
-
-    let map = unsafe {
-        MapViewOfFile(
-            handle,
-            FILE_MAP_ALL_ACCESS,
-            0,
-            0,
-            mapping_size as usize,
-        )
-    };
-
-    if map.is_null() {
-        panic!("MapViewOfFile failed");
-    }
-
-    unsafe {
-        ptr::copy_nonoverlapping(data_ptr, map as *mut c_void, buffer.len());
-        //UnmapViewOfFile(map);
-        //CloseHandle(handle);
-    }
-}
-
-#[napi]
-pub fn test_shm_write_thread(callback: JsFunction) -> Result<()> {
-    let one_second = time::Duration::from_secs(1);
-    do_shm_write();
-
-    thread::spawn(move || {
-        loop {
-
-            thread::sleep(one_second);
-        }
-    });
-    Ok(())
-}
-
-#[napi]
-fn test_shm_read_thread() {
+fn shm_read_demo(map: LPVOID) {
     let mapping_name = "RustMapping";
     let mapping_size = 1024;
 
@@ -274,7 +184,7 @@ fn test_shm_read_thread() {
     };
 
     unsafe {
-        println!("last error: {}", GetLastError());
+        println!("[0] read last error: {}", GetLastError());
     }
 
     if handle.is_null() {
@@ -308,6 +218,150 @@ fn test_shm_read_thread() {
     }
 }
 
+fn do_shm_write(map: LPVOID, buffer :&[u8]) {
+
+    let data_ptr = buffer.as_ptr() as LPVOID;
+    if map.is_null() {
+        panic!("MapViewOfFile failed");
+    }
+
+    unsafe {
+        ptr::copy_nonoverlapping(data_ptr, map as *mut c_void, buffer.len());
+    }
+}
+
+fn do_shm_read(map: LPVOID) {
+    let mapping_size = 1024;
+
+    if map.is_null() {
+        panic!("map is null");
+    }
+
+    let buffer = unsafe {
+        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
+        std::str::from_utf8_unchecked(slice)
+    };
+
+    println!("Read from shared memory: {}", buffer);
+
+}
+
+
+fn shm_init() -> (LPVOID, HANDLE) {
+    let mapping_name = "RustMapping";
+    let mapping_size = 1024;
+
+    let handle = unsafe {
+        CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            ptr::null_mut(),
+            PAGE_READWRITE,
+            0,
+            mapping_size,
+            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
+        )
+    };
+
+    if handle.is_null() {
+        panic!("CreateFileMappingW failed");
+    }
+
+    let map = unsafe {
+        MapViewOfFile(
+            handle,
+            FILE_MAP_ALL_ACCESS,
+            0,
+            0,
+            mapping_size as usize,
+        )
+    };
+
+    if map.is_null() {
+        panic!("MapViewOfFile failed");
+    }
+
+    return (map, handle)
+}
+
+#[cfg(target_os = "windows")]
+static mut MAP_DESC: (LPVOID, HANDLE) = (ptr::null_mut(), ptr::null_mut());
+
+#[napi]
+pub fn master_init() {
+    unsafe {
+        MAP_DESC = shm_init();
+        let buffer = b"Hello, Rust";
+        do_shm_write(MAP_DESC.0, buffer);
+    }
+
+    // thread::spawn(|| {
+    //     println!("I am master's main thread!");
+    //
+    // });
+}
+
+#[napi]
+pub fn worker_init() {
+    thread::spawn(|| {
+
+        unsafe {
+            MAP_DESC = shm_init();
+            do_shm_read(MAP_DESC.0);
+        }
+    });
+}
+
+#[napi]
+pub fn process_exit() {
+    #[cfg(target_os = "windows")] unsafe {
+        UnmapViewOfFile(MAP_DESC.0);
+        CloseHandle(MAP_DESC.1);
+    }
+}
+
+#[napi]
+fn test_shm_read_thread() {
+    let mapping_name = "RustMapping";
+    let mapping_size = 1024;
+
+    let handle = unsafe {
+        OpenFileMappingW(
+            FILE_MAP_ALL_ACCESS,
+            false.into(),
+            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
+        )
+    };
+
+    if handle.is_null() {
+        panic!("OpenFileMappingW failed");
+    }
+
+    let map = unsafe {
+        MapViewOfFile(
+            handle,
+            FILE_MAP_ALL_ACCESS,
+            0,
+            0,
+            mapping_size as usize,
+        )
+    };
+
+    if map.is_null() {
+        panic!("MapViewOfFile failed");
+    }
+
+    let buffer = unsafe {
+        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
+        std::str::from_utf8_unchecked(slice)
+    };
+
+    println!("Read from shared memory: {}", buffer);
+
+    unsafe {
+        UnmapViewOfFile(map);
+        CloseHandle(handle);
+    }
+}
 
 
 use napi::{JsFunction, Result};
@@ -334,5 +388,18 @@ pub fn call_threadsafe_function(callback: JsFunction) -> Result<()> {
         }
     });
 
+    Ok(())
+}
+
+use napi::{Env};
+
+fn clearup(env :Env) {
+    println!("#shut down!!")
+}
+
+#[napi]
+pub fn init(mut env: Env) -> Result<()> {
+    env.add_env_cleanup_hook(env, clearup);
+    //env.add_async_cleanup_hook(env, clearup);
     Ok(())
 }

@@ -7,6 +7,9 @@ export function sum(a: number, b: number): number
 export function show(): number
 export function initProcTable(n: number): void
 export function initProcInfo(brothers: number, index: number): void
-export function testShmWriteThread(callback: (...args: any[]) => any): void
+export function masterInit(): void
+export function workerInit(): void
+export function processExit(): void
 export function testShmReadThread(): void
 export function callThreadsafeFunction(callback: (...args: any[]) => any): void
+export function init(): void
