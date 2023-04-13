@@ -252,12 +252,13 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { sum, show, initProcTable, initProcInfo, masterInit, workerInit, processExit, sendData, callThreadsafeFunction, init } = nativeBinding
+const { initProcTable, initProcInfo, testSemaRelease, testSemaRequire, show, masterInit, workerInit, processExit, sendData, callThreadsafeFunction, init } = nativeBinding
 
-module.exports.sum = sum
-module.exports.show = show
 module.exports.initProcTable = initProcTable
 module.exports.initProcInfo = initProcInfo
+module.exports.testSemaRelease = testSemaRelease
+module.exports.testSemaRequire = testSemaRequire
+module.exports.show = show
 module.exports.masterInit = masterInit
 module.exports.workerInit = workerInit
 module.exports.processExit = processExit

@@ -11,8 +11,16 @@ page.get('404', async (ctx) => {
     ctx.body = '404 page!'
 }).get('hello', async (ctx) => {
     ctx.body = 'hello world page!'
+}).get('test_req', async (ctx) => {
+    await backend.testSemaRequire()
+    ctx.body = 'testSemaRequire response'
+}).get('test_rel', async (ctx) => {
+    await backend.testSemaRelease()
+    ctx.body = 'testSemaRelease response'
 }).get('write', async (ctx) => {
-    backend.sendData(Buffer.from("hello world!"))
+    let buff = Buffer.from("hello world!")
+    let index = Number.parseInt(process.env["WORKER_INDEX"])
+    backend.sendData(index, buff, buff.length)
     ctx.body = 'write page!'
 })
 

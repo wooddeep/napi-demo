@@ -1,9 +1,12 @@
+mod ipc;
+
 use futures::prelude::*;
 use napi::bindgen_prelude::*;
 use std::process;
 
 use std::sync::mpsc::channel;
 use std::thread;
+use tokio::task;
 use serde::{Deserialize, Serialize};
 use serde::de::Unexpected::Option;
 use std::path::Path;
@@ -38,17 +41,6 @@ extern crate napi_derive;
 // https://napi.rs/docs/compat-mode/concepts/tokio
 
 // https://docs.rs/interprocess/latest/interprocess/os/windows/named_pipe/enum.PipeDirection.html
-
-
-#[napi]
-pub fn sum(a: i32, b: i32) -> i32 {
-    a + b
-}
-
-#[napi]
-pub fn show() -> u32 {
-    process::id()
-}
 
 // 主进程初始化meta data
 #[derive(Deserialize, Serialize)]
@@ -291,13 +283,44 @@ fn shm_init() -> (LPVOID, HANDLE) {
 #[cfg(target_os = "windows")]
 static mut MAP_DESC: (LPVOID, HANDLE) = (ptr::null_mut(), ptr::null_mut());
 
+
 #[napi]
-pub fn master_init() {
+pub async fn test_sema_release() {
+    task::spawn_blocking(move || {
+        let semaphore = ipc::sema_open("test");
+        ipc::sema_release(semaphore);
+    }).await.unwrap();
+
+}
+
+#[napi]
+pub async fn test_sema_require() {
+    task::spawn_blocking(move || {
+        let semaphore = ipc::sema_open("test");
+        ipc::sema_require(semaphore);
+    }).await.unwrap();
+}
+
+
+#[napi]
+pub fn show() -> u32 {
+    process::id()
+}
+
+
+#[napi]
+pub async fn master_init() {
     unsafe {
         MAP_DESC = shm_init();
         let buffer = b"Hello, Rust";
         do_shm_write(MAP_DESC.0, buffer);
     }
+
+    let task = std::thread::spawn(|| {
+        let semaphore = ipc::sema_create("test");
+        ipc::sema_require(semaphore)
+    });
+
 }
 
 #[napi]
@@ -318,11 +341,12 @@ pub fn process_exit() {
     }
 }
 
+// index: worker process index: from 0
 #[napi]
-pub fn send_data(data: Buffer) {
+pub fn send_data(index: u32, data: Buffer, n: u32) {
 
     let buffer = unsafe {
-        let slice = std::slice::from_raw_parts(data.as_ptr() as *const u8, 5);
+        let slice = std::slice::from_raw_parts(data.as_ptr() as *const u8, n as usize);
         std::str::from_utf8_unchecked(slice)
     };
 
