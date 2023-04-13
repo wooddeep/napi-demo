@@ -3,7 +3,7 @@ const Router = require('koa-router')
 const Koa = require('koa')
 const app = new Koa()
 const backend = require("../index.js")
-const {initProcInfo, runServer, testShmWrite, testShmRead, printThreadId, testShmWriteThread} = require("../index");
+const {initProcInfo, runServer, testShmWrite, testShmRead, printThreadId, testShmWriteThread, callback} = require("../index");
 const {Buffer} = require("memfs/lib/internal/buffer");
 
 let page = new Router()
@@ -11,18 +11,18 @@ page.get('404', async (ctx) => {
     ctx.body = '404 page!'
 }).get('hello', async (ctx) => {
     ctx.body = 'hello world page!'
-}).get('test_req', async (ctx) => {
+}).get('require', async (ctx) => {
     await backend.testSemaRequire()
     ctx.body = 'testSemaRequire response'
-}).get('test_rel', async (ctx) => {
+}).get('release', async (ctx) => {
     await backend.testSemaRelease()
     ctx.body = 'testSemaRelease response'
-
+}).get('read', async (ctx) => {
+    await backend.testShmRead()
+    ctx.body = 'testShmRead response'
 }).get('write', async (ctx) => {
-    let buff = Buffer.from("hello world!")
-    let index = Number.parseInt(process.env["WORKER_INDEX"])
-    backend.sendData(index, buff, buff.length)
-    ctx.body = 'write page!'
+    await backend.testShmWrite()
+    ctx.body = 'testShmWrite response'
 })
 
 let router = new Router()
@@ -44,16 +44,7 @@ process.on("beforeExit", (code) => {
 })
 
 if (cluster.isMaster) { // main process
-    //backend.init()
-
     backend.masterInit()
-
-    //backend.testShmWriteThread()
-
-    // test.callThreadsafeFunction(async () => {
-    //     console.log(`## called by rust...... time: ${new Date()}`)
-    // })
-
     for (var i = 0, n = child_proc_num ; i < n; i += 1) {
         var new_worker_env = {};
         new_worker_env["WORKER_INDEX"] = i;
@@ -65,9 +56,11 @@ if (cluster.isMaster) { // main process
     })
 
 } else {
-
-    //backend.testShmReadThread()
     backend.workerInit()
+    backend.callSafeFunc(async (data) => {
+        let curr_data = await backend.testShmRead()
+        console.log(`## called by rust...... time: ${new Date()}; data: ${curr_data}`)
+    })
 
     console.log("WORKER_INDEX", process.env["WORKER_INDEX"])
     app.listen(5050, async () => {

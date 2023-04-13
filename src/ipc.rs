@@ -1,29 +1,22 @@
-use std::ffi::CString;
-use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
-use winapi::shared::winerror::{WAIT_TIMEOUT};
-use winapi::um::winbase::WAIT_FAILED;
-use winapi::um::synchapi::{CreateSemaphoreW, OpenSemaphoreW, ReleaseSemaphore, WaitForSingleObject};
-use winapi::um::winbase::WAIT_OBJECT_0;
-use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
-use std::ffi::OsString;
-use std::os::windows::ffi::OsStringExt;
-use widestring::U16CString;
-use winapi::um::winnt::HANDLE;
-use std::os::raw::c_long;
-use winapi::um::errhandlingapi::GetLastError;
-use futures::StreamExt as _;
-use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
-use parity_tokio_ipc::{Endpoint, SecurityAttributes};
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
-use std::ptr::null_mut;
-use winapi::um::winnt::{LONG, SEMAPHORE_ALL_ACCESS};
 use winapi::um::memoryapi::{CreateFileMappingW, MapViewOfFile, UnmapViewOfFile, OpenFileMappingW, FILE_MAP_ALL_ACCESS};
-use winapi::um::winnt::{PAGE_READWRITE, SECTION_ALL_ACCESS, GENERIC_READ, GENERIC_WRITE, FILE_ALL_ACCESS};
-use std::os::raw::c_void;
-use std::ptr;
-use napi::{CallContext, JsNull, JsNumber};
+use winapi::um::synchapi::{CreateSemaphoreW, OpenSemaphoreW, ReleaseSemaphore, WaitForSingleObject};
+use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
+use winapi::um::winnt::{SEMAPHORE_ALL_ACCESS};
+use winapi::um::winnt::{PAGE_READWRITE};
+use winapi::um::winbase::WAIT_OBJECT_0;
+use winapi::um::errhandlingapi::GetLastError;
 use winapi::shared::minwindef::{LPVOID};
+use winapi::um::winnt::HANDLE;
+
+use std::os::windows::ffi::OsStrExt;
+use std::os::raw::c_void;
+use std::ptr::null_mut;
+use std::ffi::OsStr;
+use std::ptr;
+
+use futures::StreamExt as _;
+use napi::{CallContext, JsNull, JsNumber};
 
 pub fn sema_create(name: &str) -> HANDLE {
     // 命名信号量名
@@ -167,7 +160,7 @@ pub fn do_shm_write(map: LPVOID, buffer: &[u8]) {
     }
 }
 
-pub fn do_shm_read(map: LPVOID) {
+pub fn do_shm_read(map: LPVOID) -> &'static str {
     let mapping_size = 1024;
 
     if map.is_null() {
@@ -179,7 +172,7 @@ pub fn do_shm_read(map: LPVOID) {
         std::str::from_utf8_unchecked(slice)
     };
 
-    println!("Read from shared memory: {}", buffer);
+    return buffer
 }
 
 
@@ -217,4 +210,11 @@ pub fn shm_init() -> (LPVOID, HANDLE) {
     }
 
     return (map, handle);
+}
+
+pub fn shm_clearup(desc: (LPVOID, HANDLE)) {
+    unsafe {
+        UnmapViewOfFile(desc.0);
+        CloseHandle(desc.1);
+    }
 }

@@ -1,28 +1,28 @@
-mod ipc;
-
+use napi::{bindgen_prelude::*, JsNull, JsString, JsUnknown, threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode}};
 use futures::prelude::*;
-use napi::bindgen_prelude::*;
-use std::process;
-
-use std::sync::mpsc::channel;
-use std::thread;
 use tokio::task;
-use serde::{Deserialize, Serialize};
-use serde::de::Unexpected::Option;
-use std::path::Path;
-
-use std::io::Error;
-
-use std::ptr::{null_mut};
-use winapi::ctypes::c_ulong;
-
 
 use napi::{JsFunction, Result};
+use napi::bindgen_prelude::*;
+use napi::{Env};
+
+use serde::{Deserialize, Serialize};
+use serde::de::Unexpected::Option;
+
+use std::sync::mpsc::channel;
+use std::ptr::{null_mut};
+use std::path::Path;
+use std::io::Error;
+use std::process;
+use std::thread;
 use std::{time};
-use napi::{
-    bindgen_prelude::*,
-    threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode},
-};
+use std::ptr;
+
+use winapi::shared::minwindef::{LPVOID};
+use winapi::um::winnt::HANDLE;
+use winapi::ctypes::c_ulong;
+
+mod ipc;
 
 #[macro_use]
 extern crate napi_derive;
@@ -162,47 +162,57 @@ pub fn init_proc_info(brothers: u32, index: u32) {
     // }
 }
 
-use winapi::shared::minwindef::{LPVOID};
-use winapi::um::winnt::HANDLE;
-use std::ptr;
 
 #[cfg(target_os = "windows")]
 static mut MAP_DESC: (LPVOID, HANDLE) = (ptr::null_mut(), ptr::null_mut());
 #[cfg(target_os = "windows")]
 static mut NOTIFY_SEMA: HANDLE = ptr::null_mut();
-static  SEMA_NAME: &str = "test";
+static SEMA_NAME: &str = "test";
 
 #[napi]
 pub async fn test_sema_release() {
     task::spawn_blocking(move || {
-        let semaphore = ipc::sema_open(SEMA_NAME);
-        ipc::sema_release(semaphore);
-        ipc::sema_close(semaphore);
+        unsafe {
+            ipc::sema_release(NOTIFY_SEMA);
+        }
     }).await.unwrap();
 }
 
 #[napi]
 pub async fn test_sema_require() {
     task::spawn_blocking(move || {
-        let semaphore = ipc::sema_open(SEMA_NAME);
-        ipc::sema_require(semaphore);
-        ipc::sema_close(semaphore);
+        unsafe {
+            ipc::sema_require(NOTIFY_SEMA);
+        }
     }).await.unwrap();
 }
 
+#[napi]
+pub async fn test_shm_write() {
+    unsafe {
+        let buffer = b"Hello, Rust";
+        ipc::do_shm_write(MAP_DESC.0, buffer);
+    }
+}
+
+#[napi]
+pub async fn test_shm_read() -> &'static str {
+    let out = unsafe {
+        ipc::do_shm_read(MAP_DESC.1)
+    };
+    // return out
+    return "abcd";
+}
 
 #[napi]
 pub fn show() -> u32 {
     process::id()
 }
 
-
 #[napi]
 pub async fn master_init() {
     unsafe {
         MAP_DESC = ipc::shm_init();
-        let buffer = b"Hello, Rust";
-        ipc::do_shm_write(MAP_DESC.0, buffer);
         NOTIFY_SEMA = ipc::sema_create(SEMA_NAME);
     }
 }
@@ -212,7 +222,6 @@ pub fn worker_init() {
     thread::spawn(|| {
         unsafe {
             MAP_DESC = ipc::shm_init();
-            ipc::do_shm_read(MAP_DESC.0);
             NOTIFY_SEMA = ipc::sema_open(SEMA_NAME);
         }
     });
@@ -221,15 +230,13 @@ pub fn worker_init() {
 #[napi]
 pub fn process_exit() {
     #[cfg(target_os = "windows")] unsafe {
-        //UnmapViewOfFile(MAP_DESC.0);
-        //CloseHandle(MAP_DESC.1);
+        ipc::shm_clearup(MAP_DESC)
     }
 }
 
 // index: worker process index: from 0
 #[napi]
 pub fn send_data(index: u32, data: Buffer, n: u32) {
-
     let buffer = unsafe {
         let slice = std::slice::from_raw_parts(data.as_ptr() as *const u8, n as usize);
         std::str::from_utf8_unchecked(slice)
@@ -240,26 +247,35 @@ pub fn send_data(index: u32, data: Buffer, n: u32) {
 
 
 #[napi]
-pub fn call_threadsafe_function(callback: JsFunction) -> Result<()> {
-    let tsfn: ThreadsafeFunction<u32, ErrorStrategy::CalleeHandled> = callback
+pub fn call_safe_func(callback: JsFunction) -> Result<()> {
+    let tsfn: ThreadsafeFunction<String, ErrorStrategy::CalleeHandled> = callback
         .create_threadsafe_function(0, |ctx| {
-            ctx.env.create_uint32(ctx.value + 1).map(|v| vec![v])
+            let object = ctx.env.create_string("hello world!").unwrap();
+            Ok(vec![object])
         })?;
 
-    let one_second = time::Duration::from_secs(1);
-
+    let one_second = time::Duration::from_secs(3);
     let tsfn = tsfn.clone();
+
     thread::spawn(move || {
         loop {
-            tsfn.call(Ok(0), ThreadsafeFunctionCallMode::NonBlocking);
-            thread::sleep(one_second);
+            unsafe {
+                let out = ipc::do_shm_read(MAP_DESC.0);
+                tsfn.call(Ok(String::from(out)), ThreadsafeFunctionCallMode::NonBlocking);
+                thread::sleep(one_second);
+            }
         }
     });
 
     Ok(())
 }
 
-use napi::{Env};
+#[napi]
+pub fn call_node_func(env: Env, callback: JsFunction) -> Result<()> {
+    let out:[JsNull;0] = [];
+    callback.call(None, &out);
+    Ok(())
+}
 
 fn clearup(env: Env) {
     println!("#shut down!!")
