@@ -12,18 +12,10 @@ use serde::de::Unexpected::Option;
 use std::path::Path;
 
 use std::io::Error;
-use std::os::raw::c_void;
+
 use std::ptr::{null_mut};
 use winapi::ctypes::c_ulong;
 
-use winapi::um::memoryapi::{CreateFileMappingW, MapViewOfFile, UnmapViewOfFile, OpenFileMappingW, FILE_MAP_ALL_ACCESS};
-use winapi::um::winnt::{HANDLE, PAGE_READWRITE, SECTION_ALL_ACCESS, GENERIC_READ, GENERIC_WRITE, FILE_ALL_ACCESS};
-
-use std::ptr;
-use napi::{CallContext, JsNull, JsNumber};
-use winapi::shared::minwindef::{DWORD, LPVOID};
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
 
 use napi::{JsFunction, Result};
 use std::{time};
@@ -170,134 +162,31 @@ pub fn init_proc_info(brothers: u32, index: u32) {
     // }
 }
 
-fn shm_read_demo(map: LPVOID) {
-    let mapping_name = "RustMapping";
-    let mapping_size = 1024;
-
-    let handle = unsafe {
-        OpenFileMappingW(
-            FILE_MAP_ALL_ACCESS,
-            false.into(),
-            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
-        )
-    };
-
-    unsafe {
-        println!("[0] read last error: {}", GetLastError());
-    }
-
-    if handle.is_null() {
-        panic!("OpenFileMappingW failed");
-    }
-
-    let map = unsafe {
-        MapViewOfFile(
-            handle,
-            FILE_MAP_ALL_ACCESS,
-            0,
-            0,
-            mapping_size as usize,
-        )
-    };
-
-    if map.is_null() {
-        panic!("MapViewOfFile failed");
-    }
-
-    let buffer = unsafe {
-        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
-        std::str::from_utf8_unchecked(slice)
-    };
-
-    println!("Read from shared memory: {}", buffer);
-
-    unsafe {
-        UnmapViewOfFile(map);
-        CloseHandle(handle);
-    }
-}
-
-fn do_shm_write(map: LPVOID, buffer: &[u8]) {
-    let data_ptr = buffer.as_ptr() as LPVOID;
-    if map.is_null() {
-        panic!("MapViewOfFile failed");
-    }
-
-    unsafe {
-        ptr::copy_nonoverlapping(data_ptr, map as *mut c_void, buffer.len());
-    }
-}
-
-fn do_shm_read(map: LPVOID) {
-    let mapping_size = 1024;
-
-    if map.is_null() {
-        panic!("map is null");
-    }
-
-    let buffer = unsafe {
-        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
-        std::str::from_utf8_unchecked(slice)
-    };
-
-    println!("Read from shared memory: {}", buffer);
-}
-
-
-fn shm_init() -> (LPVOID, HANDLE) {
-    let mapping_name = "RustMapping";
-    let mapping_size = 1024;
-
-    let handle = unsafe {
-        CreateFileMappingW(
-            INVALID_HANDLE_VALUE,
-            ptr::null_mut(),
-            PAGE_READWRITE,
-            0,
-            mapping_size,
-            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
-        )
-    };
-
-    if handle.is_null() {
-        panic!("CreateFileMappingW failed");
-    }
-
-    let map = unsafe {
-        MapViewOfFile(
-            handle,
-            FILE_MAP_ALL_ACCESS,
-            0,
-            0,
-            mapping_size as usize,
-        )
-    };
-
-    if map.is_null() {
-        panic!("MapViewOfFile failed");
-    }
-
-    return (map, handle);
-}
+use winapi::shared::minwindef::{LPVOID};
+use winapi::um::winnt::HANDLE;
+use std::ptr;
 
 #[cfg(target_os = "windows")]
 static mut MAP_DESC: (LPVOID, HANDLE) = (ptr::null_mut(), ptr::null_mut());
-
+#[cfg(target_os = "windows")]
+static mut NOTIFY_SEMA: HANDLE = ptr::null_mut();
+static  SEMA_NAME: &str = "test";
 
 #[napi]
 pub async fn test_sema_release() {
     task::spawn_blocking(move || {
-        let semaphore = ipc::sema_open("test");
+        let semaphore = ipc::sema_open(SEMA_NAME);
         ipc::sema_release(semaphore);
+        ipc::sema_close(semaphore);
     }).await.unwrap();
-
 }
 
 #[napi]
 pub async fn test_sema_require() {
     task::spawn_blocking(move || {
-        let semaphore = ipc::sema_open("test");
+        let semaphore = ipc::sema_open(SEMA_NAME);
         ipc::sema_require(semaphore);
+        ipc::sema_close(semaphore);
     }).await.unwrap();
 }
 
@@ -311,24 +200,20 @@ pub fn show() -> u32 {
 #[napi]
 pub async fn master_init() {
     unsafe {
-        MAP_DESC = shm_init();
+        MAP_DESC = ipc::shm_init();
         let buffer = b"Hello, Rust";
-        do_shm_write(MAP_DESC.0, buffer);
+        ipc::do_shm_write(MAP_DESC.0, buffer);
+        NOTIFY_SEMA = ipc::sema_create(SEMA_NAME);
     }
-
-    let task = std::thread::spawn(|| {
-        let semaphore = ipc::sema_create("test");
-        ipc::sema_require(semaphore)
-    });
-
 }
 
 #[napi]
 pub fn worker_init() {
     thread::spawn(|| {
         unsafe {
-            MAP_DESC = shm_init();
-            do_shm_read(MAP_DESC.0);
+            MAP_DESC = ipc::shm_init();
+            ipc::do_shm_read(MAP_DESC.0);
+            NOTIFY_SEMA = ipc::sema_open(SEMA_NAME);
         }
     });
 }
@@ -336,8 +221,8 @@ pub fn worker_init() {
 #[napi]
 pub fn process_exit() {
     #[cfg(target_os = "windows")] unsafe {
-        UnmapViewOfFile(MAP_DESC.0);
-        CloseHandle(MAP_DESC.1);
+        //UnmapViewOfFile(MAP_DESC.0);
+        //CloseHandle(MAP_DESC.1);
     }
 }
 

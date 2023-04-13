@@ -18,7 +18,12 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::null_mut;
 use winapi::um::winnt::{LONG, SEMAPHORE_ALL_ACCESS};
-
+use winapi::um::memoryapi::{CreateFileMappingW, MapViewOfFile, UnmapViewOfFile, OpenFileMappingW, FILE_MAP_ALL_ACCESS};
+use winapi::um::winnt::{PAGE_READWRITE, SECTION_ALL_ACCESS, GENERIC_READ, GENERIC_WRITE, FILE_ALL_ACCESS};
+use std::os::raw::c_void;
+use std::ptr;
+use napi::{CallContext, JsNull, JsNumber};
+use winapi::shared::minwindef::{LPVOID};
 
 pub fn sema_create(name: &str) -> HANDLE {
     // 命名信号量名
@@ -34,7 +39,7 @@ pub fn sema_create(name: &str) -> HANDLE {
         )
     };
     if semaphore_handle == null_mut() {
-        panic!("CreateSemaphoreW failed");
+        println!("CreateSemaphoreW failed");
     }
 
     println!("Semaphore created");
@@ -54,7 +59,7 @@ pub fn sema_open(name: &str) -> HANDLE {
         )
     };
     if semaphore_handle == null_mut() {
-        panic!("OpenSemaphoreW failed");
+        println!("OpenSemaphoreW failed");
     }
     println!("Semaphore opened");
     return semaphore_handle;
@@ -74,27 +79,6 @@ pub fn sema_require(semaphore_handle: HANDLE) {
             println!("WaitForSingleObject failed");
         }
     }
-
-    // 释放信号量所有权
-    let release_result: i32 = unsafe {
-        ReleaseSemaphore(
-            semaphore_handle,
-            1,
-            null_mut(),
-        )
-    };
-    if release_result == 0 {
-        panic!("ReleaseSemaphore failed");
-    }
-    println!("Semaphore ownership released");
-
-    // 关闭命名信号量句柄
-    let close_result: i32 = unsafe {
-        CloseHandle(semaphore_handle)
-    };
-    if close_result == 0 {
-        panic!("CloseHandle failed");
-    }
 }
 
 pub fn sema_release(semaphore_handle: HANDLE) {
@@ -107,7 +91,7 @@ pub fn sema_release(semaphore_handle: HANDLE) {
         )
     };
     if release_result == 0 {
-        panic!("ReleaseSemaphore failed");
+        println!("ReleaseSemaphore failed");
     }
     println!("Semaphore ownership");
 }
@@ -122,4 +106,115 @@ pub fn sema_close(semaphore: HANDLE) -> bool {
     }
 
     return true;
+}
+
+
+fn shm_read_demo(map: LPVOID) {
+    let mapping_name = "RustMapping";
+    let mapping_size = 1024;
+
+    let handle = unsafe {
+        OpenFileMappingW(
+            FILE_MAP_ALL_ACCESS,
+            false.into(),
+            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
+        )
+    };
+
+    unsafe {
+        println!("[0] read last error: {}", GetLastError());
+    }
+
+    if handle.is_null() {
+        panic!("OpenFileMappingW failed");
+    }
+
+    let map = unsafe {
+        MapViewOfFile(
+            handle,
+            FILE_MAP_ALL_ACCESS,
+            0,
+            0,
+            mapping_size as usize,
+        )
+    };
+
+    if map.is_null() {
+        panic!("MapViewOfFile failed");
+    }
+
+    let buffer = unsafe {
+        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
+        std::str::from_utf8_unchecked(slice)
+    };
+
+    println!("Read from shared memory: {}", buffer);
+
+    unsafe {
+        UnmapViewOfFile(map);
+        CloseHandle(handle);
+    }
+}
+
+pub fn do_shm_write(map: LPVOID, buffer: &[u8]) {
+    let data_ptr = buffer.as_ptr() as LPVOID;
+    if map.is_null() {
+        panic!("MapViewOfFile failed");
+    }
+
+    unsafe {
+        ptr::copy_nonoverlapping(data_ptr, map as *mut c_void, buffer.len());
+    }
+}
+
+pub fn do_shm_read(map: LPVOID) {
+    let mapping_size = 1024;
+
+    if map.is_null() {
+        panic!("map is null");
+    }
+
+    let buffer = unsafe {
+        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
+        std::str::from_utf8_unchecked(slice)
+    };
+
+    println!("Read from shared memory: {}", buffer);
+}
+
+
+pub fn shm_init() -> (LPVOID, HANDLE) {
+    let mapping_name = "RustMapping";
+    let mapping_size = 1024;
+
+    let handle = unsafe {
+        CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            ptr::null_mut(),
+            PAGE_READWRITE,
+            0,
+            mapping_size,
+            mapping_name.encode_utf16().collect::<Vec<_>>().as_ptr(),
+        )
+    };
+
+    if handle.is_null() {
+        panic!("CreateFileMappingW failed");
+    }
+
+    let map = unsafe {
+        MapViewOfFile(
+            handle,
+            FILE_MAP_ALL_ACCESS,
+            0,
+            0,
+            mapping_size as usize,
+        )
+    };
+
+    if map.is_null() {
+        panic!("MapViewOfFile failed");
+    }
+
+    return (map, handle);
 }

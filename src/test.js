@@ -17,6 +17,7 @@ page.get('404', async (ctx) => {
 }).get('test_rel', async (ctx) => {
     await backend.testSemaRelease()
     ctx.body = 'testSemaRelease response'
+
 }).get('write', async (ctx) => {
     let buff = Buffer.from("hello world!")
     let index = Number.parseInt(process.env["WORKER_INDEX"])
@@ -30,7 +31,7 @@ router.use('/', page.routes(), page.allowedMethods())
 // 加载路由中间件
 app.use(router.routes()).use(router.allowedMethods())
 
-const child_proc_num = 1 // /*os.cpus().length*/
+const child_proc_num = 2 // /*os.cpus().length*/
 
 process.on("SIGINT", () => {
     backend.processExit()
