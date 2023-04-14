@@ -42,16 +42,19 @@ process.on("beforeExit", (code) => {
     backend.processExit()
 })
 
-if (cluster.isMaster) { // main process
-    //backend.init()
+function subscribe(callback) {
+    backend.callNodeFunc().then((data) => {
+        callback(data)
+        subscribe(callback)
+    })
+}
 
+if (cluster.isMaster) { // main process
     backend.masterInit()
 
-    //backend.testShmWriteThread()
-
-    // test.callThreadsafeFunction(async () => {
-    //     console.log(`## called by rust...... time: ${new Date()}`)
-    // })
+    subscribe((data) => {
+        console.log(`## data = ${data}`)
+    });
 
     for (var i = 0, n = child_proc_num ; i < n; i += 1) {
         var new_worker_env = {};
@@ -65,9 +68,7 @@ if (cluster.isMaster) { // main process
 
 } else {
 
-    //backend.testShmReadThread()
     backend.workerInit()
-
     console.log("WORKER_INDEX", process.env["WORKER_INDEX"])
     app.listen(5050, async () => {
         //console.log("# child start ok!")

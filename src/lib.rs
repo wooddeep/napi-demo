@@ -355,24 +355,36 @@ pub fn send_data(index: u32, data: Buffer, n: u32) {
 
 
 #[napi]
-pub fn call_threadsafe_function(callback: JsFunction) -> Result<()> {
+pub fn call_safe_func(callback: JsFunction) -> Result<u32> {
     let tsfn: ThreadsafeFunction<u32, ErrorStrategy::CalleeHandled> = callback
-        .create_threadsafe_function(0, |ctx| {
+        .create_threadsafe_function(100, |ctx| {
+            println!("{}", ctx.value);
             ctx.env.create_uint32(ctx.value + 1).map(|v| vec![v])
         })?;
+
 
     let one_second = time::Duration::from_secs(1);
 
     let tsfn = tsfn.clone();
     thread::spawn(move || {
         loop {
-            tsfn.call(Ok(0), ThreadsafeFunctionCallMode::NonBlocking);
+            tsfn.call(Ok(100), ThreadsafeFunctionCallMode::NonBlocking);
             thread::sleep(one_second);
         }
     });
 
-    Ok(())
+    Ok(100)
 }
+
+#[napi]
+pub async fn call_node_func() -> Result<u32> {
+    let one_second = time::Duration::from_secs(1);
+    task::spawn_blocking(move || {
+        thread::sleep(one_second);
+    }).await.unwrap();
+    return Ok(100)
+}
+
 
 use napi::{Env};
 

@@ -75,19 +75,6 @@ pub fn sema_require(semaphore_handle: HANDLE) {
         }
     }
 
-    // 释放信号量所有权
-    let release_result: i32 = unsafe {
-        ReleaseSemaphore(
-            semaphore_handle,
-            1,
-            null_mut(),
-        )
-    };
-    if release_result == 0 {
-        panic!("ReleaseSemaphore failed");
-    }
-    println!("Semaphore ownership released");
-
     // 关闭命名信号量句柄
     let close_result: i32 = unsafe {
         CloseHandle(semaphore_handle)

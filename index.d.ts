@@ -12,5 +12,6 @@ export function masterInit(): Promise<void>
 export function workerInit(): void
 export function processExit(): void
 export function sendData(index: number, data: Buffer, n: number): void
-export function callThreadsafeFunction(callback: (...args: any[]) => any): void
+export function callSafeFunc(callback: (...args: any[]) => any): number
+export function callNodeFunc(): Promise<number>
 export function init(): void
