@@ -81,7 +81,7 @@ if (cluster.isMaster) { // main process
     process.WORKER_INDEX = process.env["WORKER_INDEX"]
     console.log("WORKER_INDEX", process.env["WORKER_INDEX"])
     app.listen(5050, async () => {
-        //console.log("# child start ok!")
+        console.log("# child start ok!")
     })
 
 }
