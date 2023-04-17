@@ -196,12 +196,12 @@ pub async fn test_shm_write() {
 }
 
 #[napi]
-pub async fn test_shm_read() -> &'static str {
-    let out = unsafe {
-        ipc::do_shm_read(MAP_DESC.1)
+pub  fn test_shm_read() -> String {
+    let out =
+    unsafe {
+        ipc::do_shm_read(MAP_DESC.0)
     };
-    // return out
-    return "abcd";
+    return out
 }
 
 #[napi]
@@ -248,7 +248,7 @@ pub fn send_data(index: u32, data: Buffer, n: u32) {
 
 #[napi]
 pub fn call_safe_func(callback: JsFunction) -> Result<()> {
-    let tsfn: ThreadsafeFunction<String, ErrorStrategy::CalleeHandled> = callback
+    let tsfn: ThreadsafeFunction<u32, ErrorStrategy::CalleeHandled> = callback
         .create_threadsafe_function(0, |ctx| {
             let object = ctx.env.create_string("hello world!").unwrap();
             Ok(vec![object])
@@ -260,8 +260,7 @@ pub fn call_safe_func(callback: JsFunction) -> Result<()> {
     thread::spawn(move || {
         loop {
             unsafe {
-                let out = ipc::do_shm_read(MAP_DESC.0);
-                tsfn.call(Ok(String::from(out)), ThreadsafeFunctionCallMode::NonBlocking);
+                tsfn.call(Ok(0), ThreadsafeFunctionCallMode::NonBlocking);
                 thread::sleep(one_second);
             }
         }
@@ -271,10 +270,12 @@ pub fn call_safe_func(callback: JsFunction) -> Result<()> {
 }
 
 #[napi]
-pub fn call_node_func(env: Env, callback: JsFunction) -> Result<()> {
-    let out:[JsNull;0] = [];
-    callback.call(None, &out);
-    Ok(())
+pub async fn call_node_func() -> Result<u32> {
+    let one_second = time::Duration::from_secs(1);
+    task::spawn_blocking(move || {
+        thread::sleep(one_second);
+    }).await.unwrap();
+    return Ok(100)
 }
 
 fn clearup(env: Env) {

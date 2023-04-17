@@ -160,7 +160,8 @@ pub fn do_shm_write(map: LPVOID, buffer: &[u8]) {
     }
 }
 
-pub fn do_shm_read(map: LPVOID) -> &'static str {
+pub fn do_shm_read(map: LPVOID) -> String {
+
     let mapping_size = 1024;
 
     if map.is_null() {
@@ -172,9 +173,10 @@ pub fn do_shm_read(map: LPVOID) -> &'static str {
         std::str::from_utf8_unchecked(slice)
     };
 
-    return buffer
-}
+    println!("Read from shared memory: {}", buffer);
 
+    return String::from(buffer);
+}
 
 pub fn shm_init() -> (LPVOID, HANDLE) {
     let mapping_name = "RustMapping";

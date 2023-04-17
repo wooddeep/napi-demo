@@ -8,12 +8,12 @@ export function initProcInfo(brothers: number, index: number): void
 export function testSemaRelease(): Promise<void>
 export function testSemaRequire(): Promise<void>
 export function testShmWrite(): Promise<void>
-export function testShmRead(): Promise<string>
+export function testShmRead(): string
 export function show(): number
 export function masterInit(): Promise<void>
 export function workerInit(): void
 export function processExit(): void
 export function sendData(index: number, data: Buffer, n: number): void
 export function callSafeFunc(callback: (...args: any[]) => any): void
-export function callNodeFunc(callback: (...args: any[]) => any): void
+export function callNodeFunc(): Promise<number>
 export function init(): void

@@ -31,7 +31,7 @@ router.use('/', page.routes(), page.allowedMethods())
 // 加载路由中间件
 app.use(router.routes()).use(router.allowedMethods())
 
-const child_proc_num = 2 // /*os.cpus().length*/
+const child_proc_num = 1 // /*os.cpus().length*/
 
 process.on("SIGINT", () => {
     backend.processExit()
@@ -43,25 +43,42 @@ process.on("beforeExit", (code) => {
     backend.processExit()
 })
 
+function subscribe(callback) {
+    backend.callNodeFunc().then((data) => {
+        callback(data)
+        subscribe(callback)
+    })
+}
+
 if (cluster.isMaster) { // main process
     backend.masterInit()
+
+    let child_map = new Map()
     for (var i = 0, n = child_proc_num ; i < n; i += 1) {
-        var new_worker_env = {};
+        let new_worker_env = {};
         new_worker_env["WORKER_INDEX"] = i;
-        cluster.fork(new_worker_env); // start child process
+        let child = cluster.fork(new_worker_env); // start child process
+        child_map.set(child.process.pid, i)
     }
 
     cluster.on("exit", (worker, code, signal) => { // start again when one child exit!
-        cluster.fork();
+        let new_worker_env = {};
+        let index = child_map.get(worker.process.pid)
+        new_worker_env["WORKER_INDEX"] = index;
+        child_map.delete(worker.process.pid)
+        let child = cluster.fork(new_worker_env);
+        child_map.set(child.process.pid, index)
     })
 
 } else {
     backend.workerInit()
-    backend.callSafeFunc(async (data) => {
-        let curr_data = await backend.testShmRead()
-        console.log(`## called by rust...... time: ${new Date()}; data: ${curr_data}`)
-    })
 
+    subscribe(async () => {
+        let data = await backend.testShmRead();
+        console.log(`## process id: ${process.pid}; data = ${data}`)
+    });
+
+    process.WORKER_INDEX = process.env["WORKER_INDEX"]
     console.log("WORKER_INDEX", process.env["WORKER_INDEX"])
     app.listen(5050, async () => {
         //console.log("# child start ok!")
