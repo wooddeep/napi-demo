@@ -1,22 +1,21 @@
-use winapi::um::memoryapi::{CreateFileMappingW, MapViewOfFile, UnmapViewOfFile, OpenFileMappingW, FILE_MAP_ALL_ACCESS};
-use winapi::um::synchapi::{CreateSemaphoreW, OpenSemaphoreW, ReleaseSemaphore, WaitForSingleObject};
-use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
-use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
-use winapi::um::winnt::{SEMAPHORE_ALL_ACCESS};
-use winapi::um::winnt::{PAGE_READWRITE};
-use winapi::um::winbase::WAIT_OBJECT_0;
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::shared::minwindef::{LPVOID};
-use winapi::um::winnt::HANDLE;
-
-use std::os::windows::ffi::OsStrExt;
-use std::os::raw::c_void;
-use std::ptr::null_mut;
 use std::ffi::OsStr;
+use std::os::raw::c_void;
+use std::os::windows::ffi::OsStrExt;
 use std::ptr;
+use std::ptr::null_mut;
 
 use futures::StreamExt as _;
 use napi::{CallContext, JsNull, JsNumber};
+use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
+use winapi::shared::minwindef::LPVOID;
+use winapi::um::errhandlingapi::GetLastError;
+use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+use winapi::um::memoryapi::{CreateFileMappingW, FILE_MAP_ALL_ACCESS, MapViewOfFile, OpenFileMappingW, UnmapViewOfFile};
+use winapi::um::synchapi::{CreateSemaphoreW, OpenSemaphoreW, ReleaseSemaphore, WaitForSingleObject};
+use winapi::um::winbase::WAIT_OBJECT_0;
+use winapi::um::winnt::SEMAPHORE_ALL_ACCESS;
+use winapi::um::winnt::PAGE_READWRITE;
+use winapi::um::winnt::HANDLE;
 
 pub fn sema_create(name: &str) -> HANDLE {
     // 命名信号量名
@@ -170,7 +169,14 @@ pub fn do_shm_read_str(map: LPVOID, offset: u32, size: u32) -> String {
     let buffer = unsafe {
         let src = map as *const u8;
         let slice = std::slice::from_raw_parts(src.offset(offset as isize), size as usize);
-        std::str::from_utf8_unchecked(slice)
+        let mut len = slice.len();
+        for i in 0..slice.len() {
+            if slice[i] == 0 {
+                len = i + 1;
+                break;
+            }
+        }
+        std::str::from_utf8_unchecked(&slice[..len])
     };
 
     return String::from(buffer);
