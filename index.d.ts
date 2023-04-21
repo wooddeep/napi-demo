@@ -7,17 +7,13 @@ export function initProcTable(n: number): void
 export function initProcInfo(brothers: number, index: number): void
 export function testSemaRelease(): Promise<void>
 export function testSemaRequire(): Promise<void>
-export function testShmWrite(): Promise<void>
+export function testShmWrite(input: string): Promise<void>
 export function testShmRead(): string
 export function show(): number
-export function masterInit(): Promise<void>
-export function workerInit(): void
+export function masterInit(workerNum: number): Promise<void>
+export function workerInit(workerNum: number, index: number): void
 export function processExit(): void
 export function sendData(index: number, data: Buffer, n: number): void
-<<<<<<< HEAD
 export function callSafeFunc(callback: (...args: any[]) => any): void
-=======
-export function callSafeFunc(callback: (...args: any[]) => any): number
->>>>>>> 62c5f1551ebd5f6691f95902e385c604b7e57bf9
 export function callNodeFunc(): Promise<number>
 export function init(): void

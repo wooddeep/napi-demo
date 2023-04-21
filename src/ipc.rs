@@ -26,7 +26,7 @@ pub fn sema_create(name: &str) -> HANDLE {
     let semaphore_handle: HANDLE = unsafe {
         CreateSemaphoreW(
             null_mut(),
-            0,
+            1,
             1,
             semaphore_name.as_ptr(),
         )
@@ -149,38 +149,37 @@ fn shm_read_demo(map: LPVOID) {
     }
 }
 
-pub fn do_shm_write(map: LPVOID, buffer: &[u8]) {
+pub fn do_shm_write(map: LPVOID, offset: u32, buffer: &[u8]) {
     let data_ptr = buffer.as_ptr() as LPVOID;
     if map.is_null() {
         panic!("MapViewOfFile failed");
     }
 
     unsafe {
-        ptr::copy_nonoverlapping(data_ptr, map as *mut c_void, buffer.len());
+        let mut dst = map as *mut c_void;
+        ptr::copy_nonoverlapping(data_ptr, dst.offset(offset as isize), buffer.len());
     }
 }
 
-pub fn do_shm_read(map: LPVOID) -> String {
-
-    let mapping_size = 1024;
-
+pub fn do_shm_read(map: LPVOID, offset: u32, size: u32) -> String {
     if map.is_null() {
         panic!("map is null");
     }
 
     let buffer = unsafe {
-        let slice = std::slice::from_raw_parts(map as *const u8, mapping_size as usize);
+        let src = map as *const u8;
+        let slice = std::slice::from_raw_parts(src.offset(offset as isize), size as usize);
         std::str::from_utf8_unchecked(slice)
     };
 
-    println!("Read from shared memory: {}", buffer);
+    //println!("Read from shared memory: {}", buffer);
 
     return String::from(buffer);
 }
 
-pub fn shm_init() -> (LPVOID, HANDLE) {
+pub fn shm_init(size: u32) -> (LPVOID, HANDLE) {
     let mapping_name = "RustMapping";
-    let mapping_size = 1024;
+    let mapping_size = size.try_into().unwrap();
 
     let handle = unsafe {
         CreateFileMappingW(

@@ -1,37 +1,40 @@
 const cluster = require("cluster")
 const Router = require('koa-router')
 const Koa = require('koa')
-const app = new Koa()
+const bodyParser = require('koa-bodyparser')
 const backend = require("../index.js")
 const {initProcInfo, runServer, testShmWrite, testShmRead, printThreadId, testShmWriteThread, callback} = require("../index");
 const {Buffer} = require("memfs/lib/internal/buffer");
 
-let page = new Router()
-page.get('404', async (ctx) => {
-    ctx.body = '404 page!'
-}).get('hello', async (ctx) => {
-    ctx.body = 'hello world page!'
-}).get('require', async (ctx) => {
+const app = new Koa()
+let router = new Router()
+app.use(bodyParser())
+
+router.get('/require', async (ctx) => {
     await backend.testSemaRequire()
     ctx.body = 'testSemaRequire response'
-}).get('release', async (ctx) => {
+});
+
+router.get('/release', async (ctx) => {
     await backend.testSemaRelease()
     ctx.body = 'testSemaRelease response'
-}).get('read', async (ctx) => {
-    await backend.testShmRead()
+});
+
+router.get('/read', async (ctx) => {
+    backend.testShmRead()
     ctx.body = 'testShmRead response'
-}).get('write', async (ctx) => {
-    await backend.testShmWrite()
+});
+
+//  curl -H "Content-Type:application/json" -X POST http://127.0.0.1:5050/write -d '{"key": "val"}'
+router.post('/write', async (ctx) => {
+    await backend.testShmWrite(JSON.stringify(ctx.request.body))
     ctx.body = 'testShmWrite response'
 })
-
-let router = new Router()
-router.use('/', page.routes(), page.allowedMethods())
 
 // 加载路由中间件
 app.use(router.routes()).use(router.allowedMethods())
 
-const child_proc_num = 1 // /*os.cpus().length*/
+const child_proc_num = 2 // /*os.cpus().length*/
 
 process.on("SIGINT", () => {
     backend.processExit()
@@ -51,7 +54,8 @@ function subscribe(callback) {
 }
 
 if (cluster.isMaster) { // main process
-    backend.masterInit()
+    cluster.schedulingPolicy = cluster.SCHED_RR;
+    backend.masterInit(child_proc_num)
 
     let child_map = new Map()
     for (var i = 0, n = child_proc_num ; i < n; i += 1) {
@@ -71,11 +75,11 @@ if (cluster.isMaster) { // main process
     })
 
 } else {
-    backend.workerInit()
+    backend.workerInit(child_proc_num, Number.parseInt(process.env["WORKER_INDEX"]))
 
     subscribe(async () => {
         let data = await backend.testShmRead();
-        console.log(`## process id: ${process.pid}; data = ${data}`)
+        console.log(`## process id: ${process.pid}; data = ${data}, time = ${new Date()}`)
     });
 
     process.WORKER_INDEX = process.env["WORKER_INDEX"]

@@ -16,6 +16,7 @@ use std::io::Error;
 use std::process;
 use std::thread;
 use std::{time};
+use std::collections::HashMap;
 use std::ptr;
 
 use winapi::shared::minwindef::{LPVOID};
@@ -60,6 +61,7 @@ struct MsgRingList {
 struct ShareMemMeta {
     pid: u32,
 }
+
 
 // serialize one message
 fn msg_meta_serial() -> Vec<u8> {
@@ -163,17 +165,37 @@ pub fn init_proc_info(brothers: u32, index: u32) {
 }
 
 
+// one process write, one process read, one semaphore for protect
+#[derive(Deserialize, Serialize)]
+struct ShareMemCell {
+    head_index: i32,
+    tail_index: i32,
+    msg_list: Vec<Vec<u8>>, // for message restore, 100 message and 200 bytes per message!
+}
+
 #[cfg(target_os = "windows")]
 static mut MAP_DESC: (LPVOID, HANDLE) = (ptr::null_mut(), ptr::null_mut());
 #[cfg(target_os = "windows")]
-static mut NOTIFY_SEMA: HANDLE = ptr::null_mut();
+//static mut NOTIFY_SEMA: HANDLE = ptr::null_mut();
 static SEMA_NAME: &str = "test";
+static mut NOTIFY_SEMA_ARR: Vec<HANDLE> = Vec::new();
+static mut NOTIFY_SEMA_MAP: Vec<Vec<HANDLE>> = Vec::new();
+
+//  100 message per cell
+static MAX_MSG_CNT_PER_CELL: u32 = 100;
+//  200 bytes per message!
+static MAX_MSG_LEN: u32 = 200;
+static mut MAX_WORKER_NUM: u32 = 0;
+// sizeof(head_index) + sizeof(tail_index)
+static MSG_CELL_META_SIZE: u32 = 8;
+static MSG_CELL_SIZE: u32 = MSG_CELL_META_SIZE + MAX_MSG_CNT_PER_CELL * MAX_MSG_LEN;
+static mut WORKER_INDEX: u32 = 0;
 
 #[napi]
 pub async fn test_sema_release() {
     task::spawn_blocking(move || {
         unsafe {
-            ipc::sema_release(NOTIFY_SEMA);
+            ipc::sema_release(NOTIFY_SEMA_ARR[WORKER_INDEX as usize]);
         }
     }).await.unwrap();
 }
@@ -182,26 +204,65 @@ pub async fn test_sema_release() {
 pub async fn test_sema_require() {
     task::spawn_blocking(move || {
         unsafe {
-            ipc::sema_require(NOTIFY_SEMA);
+            ipc::sema_require(NOTIFY_SEMA_ARR[WORKER_INDEX as usize]);
         }
     }).await.unwrap();
 }
 
 #[napi]
-pub async fn test_shm_write() {
+pub async fn test_shm_write(input: String) {
     unsafe {
-        let buffer = b"Hello, Rust";
-        ipc::do_shm_write(MAP_DESC.0, buffer);
+        let i = WORKER_INDEX;
+        println!("## write worker index: {}", WORKER_INDEX);
+        for j in 0..MAX_WORKER_NUM {
+            if i == j {
+                //println!("## worker index is {}, don't need to write data for itself", i);
+                continue;
+            }
+
+            ipc::sema_require(NOTIFY_SEMA_MAP[i as usize][j as usize]);
+
+            let buffer = input.as_bytes();
+            let offset = (i * MAX_WORKER_NUM + j) * MSG_CELL_SIZE;
+
+            // TODO 获取 head_index 与 tail_index 并更新
+            // TODO: set the correct offset, update read and write index
+            ipc::do_shm_write(MAP_DESC.0, offset, buffer);
+
+            ipc::sema_release(NOTIFY_SEMA_MAP[i as usize][j as usize]);
+        }
     }
 }
 
+use string_builder::Builder;
+
 #[napi]
-pub  fn test_shm_read() -> String {
+pub fn test_shm_read() -> String {
     let out =
-    unsafe {
-        ipc::do_shm_read(MAP_DESC.0)
-    };
-    return out
+        unsafe {
+            let mut builder = Builder::default();
+            builder.append("[");
+            let i = WORKER_INDEX;
+            for j in 0..MAX_WORKER_NUM {
+                if i == j {
+                    //println!("## worker index is {}, don't need to read data from itself", i);
+                    continue;
+                }
+
+                let offset = (j * MAX_WORKER_NUM + i) * MSG_CELL_SIZE;
+                let data = ipc::do_shm_read(MAP_DESC.0, offset, MAX_MSG_LEN);
+                builder.append(data);
+                builder.append(",");
+            }
+
+            if builder.len() < 2 {
+                //builder
+            }
+
+            builder.append("]");
+            builder.string().unwrap()
+        };
+    return out;
 }
 
 #[napi]
@@ -209,20 +270,56 @@ pub fn show() -> u32 {
     process::id()
 }
 
-#[napi]
-pub async fn master_init() {
+enum sema_oper {
+    CREATE,
+    OPEN,
+}
+
+fn init_sema_map(worker_num: u32, oper: sema_oper) {
     unsafe {
-        MAP_DESC = ipc::shm_init();
-        NOTIFY_SEMA = ipc::sema_create(SEMA_NAME);
+        for i in 0..worker_num {
+            let mut row: Vec<HANDLE> = Vec::new();
+            for j in 0..worker_num {
+                if i != j {
+                    let sema = match oper {
+                        sema_oper::CREATE => {
+                            ipc::sema_create(&format!("{}-{}-{}", SEMA_NAME, i, j))
+                        }
+                        sema_oper::OPEN => {
+                            ipc::sema_open(&format!("{}-{}-{}", SEMA_NAME, i, j))
+                        }
+                    };
+                    row.push(sema);
+                } else {
+                    row.push(ptr::null_mut());
+                }
+            }
+            NOTIFY_SEMA_MAP.push(row);
+        }
     }
 }
 
 #[napi]
-pub fn worker_init() {
-    thread::spawn(|| {
+pub async fn master_init(worker_num: u32) {
+    unsafe {
+        MAX_WORKER_NUM = worker_num;
+        let shm_size = MAX_WORKER_NUM * MAX_WORKER_NUM * MSG_CELL_SIZE;
+        MAP_DESC = ipc::shm_init(shm_size);
+        init_sema_map(worker_num, sema_oper::CREATE);
+    }
+}
+
+fn init_share_memory(worker_num: u32) {}
+
+#[napi]
+pub fn worker_init(worker_num: u32, index: u32) {
+    thread::spawn(move || {
         unsafe {
-            MAP_DESC = ipc::shm_init();
-            NOTIFY_SEMA = ipc::sema_open(SEMA_NAME);
+            WORKER_INDEX = index;
+            MAX_WORKER_NUM = worker_num;
+            let shm_size = MAX_WORKER_NUM * MAX_WORKER_NUM * MSG_CELL_SIZE;
+            MAP_DESC = ipc::shm_init(shm_size);
+            init_sema_map(worker_num, sema_oper::OPEN);
         }
     });
 }
@@ -275,7 +372,7 @@ pub async fn call_node_func() -> Result<u32> {
     task::spawn_blocking(move || {
         thread::sleep(one_second);
     }).await.unwrap();
-    return Ok(100)
+    return Ok(100);
 }
 
 fn clearup(env: Env) {
@@ -288,3 +385,6 @@ pub fn init(mut env: Env) -> Result<()> {
     //env.add_async_cleanup_hook(env, clearup);
     Ok(())
 }
+
+
+
