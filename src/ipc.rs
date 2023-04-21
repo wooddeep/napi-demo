@@ -161,7 +161,8 @@ pub fn do_shm_write(map: LPVOID, offset: u32, buffer: &[u8]) {
     }
 }
 
-pub fn do_shm_read(map: LPVOID, offset: u32, size: u32) -> String {
+// data_type: 0 ~ 返回字符串; 1 ~ 返回数组
+pub fn do_shm_read_str(map: LPVOID, offset: u32, size: u32) -> String {
     if map.is_null() {
         panic!("map is null");
     }
@@ -172,9 +173,20 @@ pub fn do_shm_read(map: LPVOID, offset: u32, size: u32) -> String {
         std::str::from_utf8_unchecked(slice)
     };
 
-    //println!("Read from shared memory: {}", buffer);
-
     return String::from(buffer);
+}
+
+pub fn do_shm_read_buf(map: LPVOID, offset: u32, size: u32) -> &'static [u8] {
+
+    if map.is_null() {
+        panic!("map is null");
+    }
+
+    unsafe {
+        let src = map as *const u8;
+        let slice = std::slice::from_raw_parts(src.offset(offset as isize), size as usize);
+        slice
+    }
 }
 
 pub fn shm_init(size: u32) -> (LPVOID, HANDLE) {

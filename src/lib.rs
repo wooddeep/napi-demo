@@ -209,25 +209,54 @@ pub async fn test_sema_require() {
     }).await.unwrap();
 }
 
+fn get_shm_u32(offset: u32) -> u32 {
+    unsafe {
+        let head_box = ipc::do_shm_read_buf(MAP_DESC.0, offset, 4);
+        let mut head_buf: [u8; 4] = [0; 4];
+        head_buf.copy_from_slice(&head_box[..4]);
+        let head_index = u32::from_be_bytes(head_buf);
+        return head_index;
+    }
+}
+
+fn set_shm_u32(udata: u32, offset: u32) {
+    unsafe {
+        let buff: [u8; 4] = udata.to_be_bytes();
+        ipc::do_shm_write(MAP_DESC.0, offset, &buff);
+    }
+}
+
+fn msg_offset(writer_index: u32, reader_index: u32, msg_index: u32) -> u32 {
+    unsafe {
+        let offset = (writer_index * MAX_WORKER_NUM + reader_index) * MSG_CELL_SIZE +
+            MSG_CELL_META_SIZE + msg_index * MAX_MSG_LEN; // write to tail
+        offset
+    }
+}
+
 #[napi]
 pub async fn test_shm_write(input: String) {
     unsafe {
-        let i = WORKER_INDEX;
-        println!("## write worker index: {}", WORKER_INDEX);
-        for j in 0..MAX_WORKER_NUM {
+        let i = WORKER_INDEX; // writer index
+
+        for j in 0..MAX_WORKER_NUM { // reader index
             if i == j {
-                //println!("## worker index is {}, don't need to write data for itself", i);
                 continue;
             }
 
             ipc::sema_require(NOTIFY_SEMA_MAP[i as usize][j as usize]);
 
+            // get the head & tail index
+            let mut tail_index = get_shm_u32(4);
             let buffer = input.as_bytes();
-            let offset = (i * MAX_WORKER_NUM + j) * MSG_CELL_SIZE;
+            let offset = msg_offset(i, j, tail_index); // write to tail
 
-            // TODO 获取 head_index 与 tail_index 并更新
-            // TODO: set the correct offset, update read and write index
             ipc::do_shm_write(MAP_DESC.0, offset, buffer);
+
+            tail_index = tail_index + 1; // tail inc
+
+            // write back the tail index
+            set_shm_u32(tail_index, 4);
 
             ipc::sema_release(NOTIFY_SEMA_MAP[i as usize][j as usize]);
         }
@@ -242,17 +271,33 @@ pub fn test_shm_read() -> String {
         unsafe {
             let mut builder = Builder::default();
             builder.append("[");
-            let i = WORKER_INDEX;
-            for j in 0..MAX_WORKER_NUM {
+
+            let i = WORKER_INDEX; // reader index
+
+            for j in 0..MAX_WORKER_NUM { // writer index
                 if i == j {
-                    //println!("## worker index is {}, don't need to read data from itself", i);
                     continue;
                 }
 
-                let offset = (j * MAX_WORKER_NUM + i) * MSG_CELL_SIZE;
-                let data = ipc::do_shm_read(MAP_DESC.0, offset, MAX_MSG_LEN);
-                builder.append(data);
-                builder.append(",");
+                // get the head & tail index
+                let mut head_index = get_shm_u32(0);
+                let mut tail_index = get_shm_u32(4);
+
+                for k in head_index..tail_index {
+                    let offset = msg_offset(j, i, k); // read from head
+                    let data = ipc::do_shm_read_str(MAP_DESC.0, offset, MAX_MSG_LEN); // read
+                    let empty: [u8; 200] = [0; 200]; // msg length: 200 byts equal to MAX_MSG_LEN
+                    ipc::do_shm_write(MAP_DESC.0, offset, &empty); // clear
+                    builder.append(data);
+                    builder.append(",");
+                }
+
+                // write back head & tail index
+                head_index = 0;
+                tail_index = 0;
+
+                set_shm_u32(head_index, 0);
+                set_shm_u32(tail_index, 4);
             }
 
             if builder.len() < 2 {
