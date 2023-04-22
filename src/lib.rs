@@ -113,8 +113,6 @@ pub async fn test_shm_write(input: String) {
                 continue;
             }
 
-            //println!("## write: writer pid: {}", std::process::id());
-
             ipc::sema_require(NOTIFY_SEMA_MAP[i as usize][j as usize]);
 
             // get the head & tail index
@@ -124,6 +122,8 @@ pub async fn test_shm_write(input: String) {
             let offset = msg_offset(i, j, tail_index); // write to tail
 
             ipc::do_shm_write(MAP_DESC.0, offset, buffer);
+
+            println!("## write: writer pid: {}, tail_index: {}, offset:{}", std::process::id(), tail_index, offset);
 
             tail_index = tail_index + 1; // tail inc
 
@@ -159,12 +159,10 @@ pub fn test_shm_read() -> String {
                 let mut head_index = get_shm_u32(meta_offset);
                 let mut tail_index = get_shm_u32(meta_offset + 4);
 
-                //println!("## read: reader pid: {}, head_index: {}, tail_index: {}", std::process::id(), head_index, tail_index);
-
                 for k in head_index..tail_index {
                     let offset = msg_offset(j, i, k); // read from head
                     let data = ipc::do_shm_read_str(MAP_DESC.0, offset, MAX_MSG_LEN); // read
-
+                    //println!("## read: reader pid: {}, head_index: {}, tail_index: {}, offset: {}", std::process::id(), head_index, tail_index, offset);
                     let empty: [u8; 200] = [0; 200]; // msg length: 200 byts equal to MAX_MSG_LEN
                     ipc::do_shm_write(MAP_DESC.0, offset, &empty); // clear
                     builder.append(data);
@@ -278,14 +276,14 @@ pub fn call_safe_func(callback: JsFunction) -> Result<()> {
             Ok(vec![object])
         })?;
 
-    let one_second = time::Duration::from_secs(3);
+    let one_millis = time::Duration::from_millis(10);
     let tsfn = tsfn.clone();
 
     thread::spawn(move || {
         loop {
             unsafe {
                 tsfn.call(Ok(0), ThreadsafeFunctionCallMode::NonBlocking);
-                thread::sleep(one_second);
+                thread::sleep(one_millis);
             }
         }
     });

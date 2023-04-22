@@ -84,7 +84,16 @@ if (cluster.isMaster) { // main process
 } else {
     backend.workerInit(child_proc_num, Number.parseInt(process.env["WORKER_INDEX"]))
 
+    /*
     subscribe(async () => {
+        let data = await backend.testShmRead();
+        if (data.length > 2) {
+            console.log(`## process id: ${process.pid}; data.length = ${data.length}, data = ${data}, time = ${new Date()}`)
+        }
+    });
+    */
+
+    backend.callSafeFunc(async () => {
         let data = await backend.testShmRead();
         if (data.length > 2) {
             console.log(`## process id: ${process.pid}; data.length = ${data.length}, data = ${data}, time = ${new Date()}`)
