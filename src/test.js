@@ -1,36 +1,40 @@
 const cluster = require("cluster")
 const Router = require('koa-router')
 const Koa = require('koa')
-const app = new Koa()
+const bodyParser = require('koa-bodyparser')
 const backend = require("../index.js")
-const {initProcInfo, runServer, testShmWrite, testShmRead, printThreadId, testShmWriteThread} = require("../index");
+const {initProcInfo, runServer, testShmWrite, testShmRead, printThreadId, testShmWriteThread, callback} = require("../index");
 const {Buffer} = require("memfs/lib/internal/buffer");
 
-let page = new Router()
-page.get('404', async (ctx) => {
-    ctx.body = '404 page!'
-}).get('hello', async (ctx) => {
-    ctx.body = 'hello world page!'
-}).get('test_req', async (ctx) => {
+const app = new Koa()
+let router = new Router()
+app.use(bodyParser())
+
+router.get('/require', async (ctx) => {
     await backend.testSemaRequire()
     ctx.body = 'testSemaRequire response'
-}).get('test_rel', async (ctx) => {
+});
+
+router.get('/release', async (ctx) => {
     await backend.testSemaRelease()
     ctx.body = 'testSemaRelease response'
-}).get('write', async (ctx) => {
-    let buff = Buffer.from("hello world!")
-    let index = Number.parseInt(process.env["WORKER_INDEX"])
-    backend.sendData(index, buff, buff.length)
-    ctx.body = 'write page!'
-})
+});
 
-let router = new Router()
-router.use('/', page.routes(), page.allowedMethods())
+router.get('/read', async (ctx) => {
+    backend.testShmRead()
+    ctx.body = 'testShmRead response'
+});
+
+//  curl -H "Content-Type:application/json" -X POST http://127.0.0.1:5050/write -d '{"key": "val"}'
+router.post('/write', async (ctx) => {
+    await backend.testShmWrite(JSON.stringify(ctx.request.body))
+    ctx.body = 'testShmWrite response'
+})
 
 // 加载路由中间件
 app.use(router.routes()).use(router.allowedMethods())
 
-const child_proc_num = 1 // /*os.cpus().length*/
+const child_proc_num = 2 // /*os.cpus().length*/
 
 process.on("SIGINT", () => {
     backend.processExit()
@@ -50,28 +54,38 @@ function subscribe(callback) {
 }
 
 if (cluster.isMaster) { // main process
-    backend.masterInit()
+    cluster.schedulingPolicy = cluster.SCHED_RR;
+    backend.masterInit(child_proc_num)
 
-    subscribe((data) => {
-        console.log(`## data = ${data}`)
-    });
-
+    let child_map = new Map()
     for (var i = 0, n = child_proc_num ; i < n; i += 1) {
-        var new_worker_env = {};
+        let new_worker_env = {};
         new_worker_env["WORKER_INDEX"] = i;
-        cluster.fork(new_worker_env); // start child process
+        let child = cluster.fork(new_worker_env); // start child process
+        child_map.set(child.process.pid, i)
     }
 
     cluster.on("exit", (worker, code, signal) => { // start again when one child exit!
-        cluster.fork();
+        let new_worker_env = {};
+        let index = child_map.get(worker.process.pid)
+        new_worker_env["WORKER_INDEX"] = index;
+        child_map.delete(worker.process.pid)
+        let child = cluster.fork(new_worker_env);
+        child_map.set(child.process.pid, index)
     })
 
 } else {
+    backend.workerInit(child_proc_num, Number.parseInt(process.env["WORKER_INDEX"]))
 
-    backend.workerInit()
+    subscribe(async () => {
+        let data = await backend.testShmRead();
+        console.log(`## process id: ${process.pid}; data = ${data}, time = ${new Date()}`)
+    });
+
+    process.WORKER_INDEX = process.env["WORKER_INDEX"]
     console.log("WORKER_INDEX", process.env["WORKER_INDEX"])
     app.listen(5050, async () => {
-        //console.log("# child start ok!")
+        console.log("# child start ok!")
     })
 
 }

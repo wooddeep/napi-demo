@@ -36,5 +36,6 @@ widestring = "*"
 napi-build = "2.0.1"
 cc = "1.0"
 
+
 [profile.release]
 lto = true
