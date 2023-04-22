@@ -64,7 +64,7 @@ pub fn sema_require(semaphore_handle: HANDLE) {
     };
     match wait_result {
         WAIT_OBJECT_0 => {
-            println!("Semaphore ownership acquired");
+            //println!("Semaphore ownership acquired");
             // do something
         }
         _ => {
@@ -85,7 +85,7 @@ pub fn sema_release(semaphore_handle: HANDLE) {
     if release_result == 0 {
         println!("ReleaseSemaphore failed");
     }
-    println!("Semaphore ownership");
+    //println!("Semaphore ownership released");
 }
 
 pub fn sema_close(semaphore: HANDLE) -> bool {

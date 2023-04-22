@@ -96,6 +96,13 @@ fn msg_offset(writer_index: u32, reader_index: u32, msg_index: u32) -> u32 {
     }
 }
 
+fn meta_offset(writer_index: u32, reader_index: u32) -> u32 {
+    unsafe {
+        let offset = (writer_index * MAX_WORKER_NUM + reader_index) * MSG_CELL_SIZE;
+        offset
+    }
+}
+
 #[napi]
 pub async fn test_shm_write(input: String) {
     unsafe {
@@ -106,10 +113,13 @@ pub async fn test_shm_write(input: String) {
                 continue;
             }
 
+            //println!("## write: writer pid: {}", std::process::id());
+
             ipc::sema_require(NOTIFY_SEMA_MAP[i as usize][j as usize]);
 
             // get the head & tail index
-            let mut tail_index = get_shm_u32(4);
+            let meta_offset = meta_offset(i, j);
+            let mut tail_index = get_shm_u32(meta_offset + 4); // TODO 修改offset位置
             let buffer = input.as_bytes();
             let offset = msg_offset(i, j, tail_index); // write to tail
 
@@ -118,7 +128,7 @@ pub async fn test_shm_write(input: String) {
             tail_index = tail_index + 1; // tail inc
 
             // write back the tail index
-            set_shm_u32(tail_index, 4);
+            set_shm_u32(tail_index, meta_offset + 4);
 
             ipc::sema_release(NOTIFY_SEMA_MAP[i as usize][j as usize]);
         }
@@ -135,18 +145,26 @@ pub fn test_shm_read() -> String {
 
             let i = WORKER_INDEX; // reader index
 
+
             for j in 0..MAX_WORKER_NUM { // writer index
                 if i == j {
                     continue;
                 }
 
+
+                ipc::sema_require(NOTIFY_SEMA_MAP[j as usize][i as usize]);
                 // get the head & tail index
-                let mut head_index = get_shm_u32(0);
-                let mut tail_index = get_shm_u32(4);
+                let meta_offset = meta_offset(j, i);
+
+                let mut head_index = get_shm_u32(meta_offset);
+                let mut tail_index = get_shm_u32(meta_offset + 4);
+
+                //println!("## read: reader pid: {}, head_index: {}, tail_index: {}", std::process::id(), head_index, tail_index);
 
                 for k in head_index..tail_index {
                     let offset = msg_offset(j, i, k); // read from head
                     let data = ipc::do_shm_read_str(MAP_DESC.0, offset, MAX_MSG_LEN); // read
+
                     let empty: [u8; 200] = [0; 200]; // msg length: 200 byts equal to MAX_MSG_LEN
                     ipc::do_shm_write(MAP_DESC.0, offset, &empty); // clear
                     builder.append(data);
@@ -157,9 +175,11 @@ pub fn test_shm_read() -> String {
                 head_index = 0;
                 tail_index = 0;
 
-                set_shm_u32(head_index, 0);
-                set_shm_u32(tail_index, 4);
+                set_shm_u32(head_index, meta_offset);
+                set_shm_u32(tail_index, meta_offset + 4);
+                ipc::sema_release(NOTIFY_SEMA_MAP[j as usize][i as usize]);
             }
+
 
             if builder.len() < 2 {
                 builder.append("]");

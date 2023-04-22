@@ -46,6 +46,13 @@ process.on("beforeExit", (code) => {
     backend.processExit()
 })
 
+function delay(secs) {
+    let promise = new Promise((resolve) => {
+        setTimeout(() => resolve(true), 1000 * secs)
+    });
+    return promise;
+}
+
 function subscribe(callback) {
     backend.callNodeFunc().then((data) => {
         callback(data)
@@ -79,7 +86,9 @@ if (cluster.isMaster) { // main process
 
     subscribe(async () => {
         let data = await backend.testShmRead();
-        console.log(`## process id: ${process.pid}; data = ${data}, time = ${new Date()}`)
+        if (data.length > 2) {
+            console.log(`## process id: ${process.pid}; data.length = ${data.length}, data = ${data}, time = ${new Date()}`)
+        }
     });
 
     process.WORKER_INDEX = process.env["WORKER_INDEX"]
